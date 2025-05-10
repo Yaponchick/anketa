@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import './Link.css'; // Убедитесь, что CSS импортирован
+import './Link.css'; 
 import Copy from './../../img/copy.png';
 import Arrow from './../../img/Arrow.png';
 import QrIcon from './../../img/QrIcon.png';
