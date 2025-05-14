@@ -1,18 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import axios from 'axios';
 import { useParams, useNavigate } from 'react-router-dom';
 import './Answers.css';
+import { AuthContext } from '../apiContent/AuthContext';
+import ModalLogin from '../js/Modal';
+import ModalRegister from '../js/ModalReg';
 
 function AnswersPage() {
     const { id } = useParams();
-    const [author, setAuthor] = useState({ firstName: '', lastName: '' });
     const navigate = useNavigate();
+    const { isLoggedIn, login } = useContext(AuthContext);
+    const [author, setAuthor] = useState({ firstName: '', lastName: '' });
     const [ansTitle, setAnsTitle] = useState('');
     const [questions, setQuestions] = useState([]);
     const [answers, setAnswers] = useState({});
     const [isLoading, setIsLoading] = useState(true);
     const [apiError, setApiError] = useState('');
     const [validationErrors, setValidationErrors] = useState({});
+    const [isLoginModalOpen, setLoginModalOpen] = useState(false);
+    const [isRegisterModalOpen, setRegisterModalOpen] = useState(false);
 
     useEffect(() => {
         const fetchQuestionnaire = async () => {
@@ -23,22 +29,17 @@ function AnswersPage() {
                 const response = await axios.get(`https://localhost:7109/questionnaire/access/${id}`, {
                     headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` },
                 });
-
                 const { title, questions: fetchedQuestions, author: fetchedAuthor } = response.data;
-
                 if (!fetchedQuestions || !Array.isArray(fetchedQuestions)) {
                     console.error('Данные вопросов отсутствуют или имеют неверный формат:', response.data);
                     setApiError('Не удалось загрузить структуру анкеты.');
                     return;
                 }
-
                 setAuthor(fetchedAuthor || { firstName: '', lastName: '' });
-
                 const processedQuestions = fetchedQuestions.map((q) => {
                     if (q.questionTypeId === 4) {
                         const parts = q.text.split('|');
                         if (parts.length < 4) {
-                            console.warn(`Некорректный формат текста для вопроса шкалы с ID ${q.id}: ${q.text}`);
                             return {
                                 ...q,
                                 text: parts[0] || q.text,
@@ -61,10 +62,8 @@ function AnswersPage() {
                     }
                     return q;
                 });
-
                 setAnsTitle(title);
                 setQuestions(processedQuestions);
-
                 const initialAnswers = {};
                 processedQuestions.forEach((q) => {
                     if (q.questionTypeId === 3) {
@@ -77,7 +76,6 @@ function AnswersPage() {
                     }
                 });
                 setAnswers(initialAnswers);
-
             } catch (err) {
                 console.error('Ошибка при загрузке анкеты:', err.response?.data || err.message);
                 if (err.response?.status === 404) {
@@ -91,20 +89,17 @@ function AnswersPage() {
                 setIsLoading(false);
             }
         };
-
         fetchQuestionnaire();
     }, [id]);
 
     const validateAnswers = () => {
         const errors = {};
         let firstErrorId = null;
-
         for (const question of questions) {
             const answer = answers[question.id];
             let isEmpty = false;
             let errorMsg = 'Пожалуйста, ответьте на этот вопрос';
-
-            switch (parseInt(question.questionTypeId, 10)) { 
+            switch (parseInt(question.questionTypeId, 10)) {
                 case 1:
                     isEmpty = !answer || !String(answer).trim();
                     errorMsg = 'Пожалуйста, заполните это поле';
@@ -129,7 +124,6 @@ function AnswersPage() {
                 default:
                     break;
             }
-
             if (isEmpty) {
                 errors[question.id] = errorMsg;
                 if (firstErrorId === null) {
@@ -137,36 +131,34 @@ function AnswersPage() {
                 }
             }
         }
-
         setValidationErrors(errors);
-
         if (firstErrorId !== null) {
             const element = document.getElementById(`question-${firstErrorId}`);
             if (element) {
                 element.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
         }
-
         return Object.keys(errors).length === 0;
     };
 
-    const handleSubmit = async () => {
+    const handleSubmit = () => {
+        if (!isLoggedIn) {
+            setLoginModalOpen(true);
+        } else {
+            submitAnswers();
+        }
+    };
+
+    const submitAnswers = async () => {
         setApiError('');
         setValidationErrors({});
-
-        if (!validateAnswers()) {
-            return;
-        }
-
+        if (!validateAnswers()) return;
         setIsLoading(true);
-
         try {
             for (const question of questions) {
                 const answer = answers[question.id];
                 let payload = null;
-
                 const questionType = parseInt(question.questionTypeId, 10);
-
                 switch (questionType) {
                     case 1:
                         payload = { AnswerText: String(answer).trim() };
@@ -190,7 +182,6 @@ function AnswersPage() {
                             const option = question.options.find((opt) => opt.id === id);
                             return option ? option.order : null;
                         }).filter(order => order !== null);
-
                         if (selectedOrdersMultiple.length !== answer.length) {
                             setApiError(`Внутренняя ошибка: неверный вариант в множественном выборе для вопроса ID ${question.id}`);
                             setIsLoading(false);
@@ -214,8 +205,7 @@ function AnswersPage() {
                             setIsLoading(false);
                             return;
                         }
-                        
-                        payload = { AnswerClose: selectedOptionIdDropdown }; 
+                        payload = { AnswerClose: selectedOptionIdDropdown };
                         break;
                     default:
                         console.warn(`Неизвестный тип вопроса: Исходный=${question.questionTypeId}, Преобразованный=${questionType}`);
@@ -223,7 +213,6 @@ function AnswersPage() {
                 }
 
                 if (payload) {
-                     console.log(`Отправка для вопроса ID ${question.id}, тип ${questionType}, Payload:`, payload);
                     await axios.post(
                         `https://localhost:7109/questionnaire/access/${id}/questions/${question.id}/answer`,
                         payload,
@@ -239,22 +228,11 @@ function AnswersPage() {
             navigate('/Thk', { state: { questionnaireId: id } });
         } catch (err) {
             console.error('Ошибка при отправке ответов:', err);
-            console.error('Ошибка при отправке ответов (response):', err.response);
-            console.error('Ошибка при отправке ответов (request):', err.request);
-            console.error('Ошибка при отправке ответов (message):', err.message);
-
             if (err.response?.status === 404) {
                 setApiError('Не удалось отправить ответ. Возможно, анкета была закрыта или удалена.');
             } else if (err.response?.status === 401 || err.response?.status === 403) {
                 setApiError('Ошибка прав доступа при отправке ответов.');
-            } else if (err.response?.data?.errors) {
-                const messages = Object.values(err.response.data.errors).flat().join(' ');
-                setApiError(`Ошибка валидации сервера: ${messages}`);
-            } else if (err.response?.status === 400) {
-                 const serverMessage = err.response?.data?.message || err.response?.data || 'Неверный запрос (400).';
-                 setApiError(`Ошибка отправки: ${serverMessage}`);
-            }
-             else {
+            } else {
                 setApiError('Произошла непредвиденная ошибка при отправке ответов.');
             }
         } finally {
@@ -293,8 +271,7 @@ function AnswersPage() {
     const renderQuestionInput = (question) => {
         const hasError = !!validationErrors[question.id];
         const errorMessage = validationErrors[question.id];
-        const questionType = parseInt(question.questionTypeId, 10); 
-
+        const questionType = parseInt(question.questionTypeId, 10);
         switch (questionType) {
             case 1:
                 return (
@@ -452,6 +429,37 @@ function AnswersPage() {
                 )}
                 {!isLoading && questions.length === 0 && !apiError && (
                     <div className="no-questions-message">В этой анкете пока нет вопросов.</div>
+                )}
+
+                {/* Модальные окна */}
+                {isLoginModalOpen && (
+                    <ModalLogin
+                        onClose={() => setLoginModalOpen(false)}
+                        onRegisterOpen={() => {
+                            setLoginModalOpen(false);
+                            setRegisterModalOpen(true);
+                        }}
+                        onLoginSuccess={() => {
+                            login();
+                            setLoginModalOpen(false);
+                            submitAnswers();
+                        }}
+                    />
+                )}
+
+                {isRegisterModalOpen && (
+                    <ModalRegister
+                        onClose={() => setRegisterModalOpen(false)}
+                        onLoginOpen={() => {
+                            setRegisterModalOpen(false);
+                            setLoginModalOpen(true);
+                        }}
+                        onRegisterSuccess={() => {
+                            login();
+                            setRegisterModalOpen(false);
+                            submitAnswers();
+                        }}
+                    />
                 )}
             </div>
         </div>

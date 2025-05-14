@@ -1,4 +1,4 @@
-import React, { useContext, useState, useEffect } from 'react'; 
+import React, { useContext, useState, useEffect } from 'react';
 import { AuthContext } from '../apiContent/AuthContext';
 import "./header.css";
 import './reset.css';
@@ -11,12 +11,14 @@ import shkala from './../../img/shkala.png';
 import shema from './../../img/shema.png';
 import ModalLogin from '../js/Modal';
 import ModalRegister from '../js/ModalReg';
+import { useNavigate } from 'react-router-dom';
 
 function Header() {
     const { isLoggedIn, login } = useContext(AuthContext);
     const [isLoginModalOpen, setLoginModalOpen] = useState(false);
     const [isRegisterModalOpen, setRegisterModalOpen] = useState(false);
-    const [isLoaded, setIsLoaded] = useState(false); 
+    const [isLoaded, setIsLoaded] = useState(false);
+    const navigate = useNavigate();
 
     useEffect(() => {
         setIsLoaded(true);
@@ -31,7 +33,7 @@ function Header() {
         if (!isLoggedIn) {
             openLoginModal();
         } else {
-            window.location.href = "/create";
+            navigate("/create");
         }
     };
 
@@ -123,7 +125,10 @@ function Header() {
                 <ModalLogin
                     onClose={closeLoginModal}
                     onRegisterOpen={openRegisterModal}
-                    onLoginSuccess={login}
+                    onLoginSuccess={() => {
+                        login();
+                        navigate("/create");
+                    }}
                 />
             )}
 
@@ -131,7 +136,10 @@ function Header() {
                 <ModalRegister
                     onClose={closeRegisterModal}
                     onLoginOpen={openLoginModal}
-                    onRegisterSuccess={login}
+                    onRegisterSuccess={() => {
+                        login();
+                        navigate("/create");
+                    }}
                 />
             )}
         </>
